@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PhishLens — URL Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg2: #111;
+      --bg3: #161616;
+      --surface: rgba(255,255,255,0.04);
+      --surface2: rgba(255,255,255,0.07);
+      --surface3: rgba(255,255,255,0.11);
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --text: #f0f0f0;
+      --text2: #888;
+      --text3: #555;
+      --accent: #ffffff;
+      --accent-dim: rgba(255,255,255,0.6);
+      --danger: #ff4444;
+      --green: #44ff88;
+      --sidebar-w: 280px;
+      --detail-w: 380px;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle noise texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.4;
+    }
+
+    /* ─── Layout ─── */
+    .app {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* ─── Sidebar ─── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: rgba(15,15,15,0.95);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      position: relative;
+      z-index: 10;
+    }
+
+    .sidebar-header {
+      padding: 24px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg { width: 18px; height: 18px; }
+
+    .logo-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .logo-sub {
+      font-size: 11px;
+      color: var(--text3);
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-section-label {
+      padding: 16px 20px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .links-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 10px;
+    }
+
+    .links-list::-webkit-scrollbar { width: 3px; }
+    .links-list::-webkit-scrollbar-track { background: transparent; }
+    .links-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+    .link-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s ease;
+      position: relative;
+      margin-bottom: 2px;
+    }
+
+    .link-item:hover { background: var(--surface2); }
+    .link-item.active { background: var(--surface3); }
+
+    .link-item-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text3);
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .link-item.has-visits .link-item-dot {
+      background: var(--green);
+      box-shadow: 0 0 8px rgba(68,255,136,0.5);
+    }
+
+    .link-item-info { flex: 1; min-width: 0; }
+
+    .link-item-id {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .link-item-meta {
+      font-size: 10px;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .link-item-badge {
+      font-size: 10px;
+      font-family: 'Space Mono', monospace;
+      background: var(--surface3);
+      color: var(--text2);
+      padding: 2px 7px;
+      border-radius: 99px;
+      border: 1px solid var(--border2);
+      flex-shrink: 0;
+    }
+
+    .link-item.has-visits .link-item-badge {
+      background: rgba(68,255,136,0.1);
+      color: var(--green);
+      border-color: rgba(68,255,136,0.2);
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-generate {
+      width: 100%;
+      padding: 13px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-generate:hover {
+      background: #e8e8e8;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(255,255,255,0.12);
+    }
+
+    .btn-generate:active { transform: translateY(0); }
+
+    .btn-generate svg { width: 14px; height: 14px; }
+
+    /* ─── Main ─── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+      position: relative;
+    }
+
+    .main-header {
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10,10,10,0.8);
+      backdrop-filter: blur(20px);
+    }
+
+    .main-title {
+      font-size: 13px;
+      color: var(--text2);
+      font-family: 'Space Mono', monospace;
+    }
+
+    .main-title span { color: var(--text); }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: 11px;
+      color: var(--text3);
+      font-family: 'Space Mono', monospace;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px rgba(68,255,136,0.6);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    .main-content::-webkit-scrollbar { width: 3px; }
+    .main-content::-webkit-scrollbar-track { background: transparent; }
+    .main-content::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      gap: 12px;
+      color: var(--text3);
+    }
+
+    .empty-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    .empty-icon svg { width: 28px; height: 28px; opacity: 0.4; }
+    .empty-title { font-size: 15px; color: var(--text2); font-weight: 500; }
+    .empty-sub { font-size: 13px; max-width: 220px; line-height: 1.6; }
+
+    /* ─── Detail Panel ─── */
+    .detail-panel {
+      width: var(--detail-w);
+      min-width: var(--detail-w);
+      height: 100vh;
+      background: rgba(13,13,13,0.97);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(24px);
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      position: relative;
+    }
+
+    .detail-panel.open { transform: translateX(0); }
+
+    .detail-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-close {
+      width: 28px;
+      height: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin-bottom: 14px;
+      transition: background 0.15s;
+    }
+
+    .detail-close:hover { background: var(--surface3); }
+    .detail-close svg { width: 12px; height: 12px; }
+
+    .detail-link-label {
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-family: 'Space Mono', monospace;
+      margin-bottom: 6px;
+    }
+
+    .detail-link-url {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text2);
+      word-break: break-all;
+      line-height: 1.5;
+      padding: 10px 12px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .detail-link-url span { flex: 1; }
+
+    .copy-btn {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: white;
+      border-color: white;
+    }
+
+    .copy-btn:hover svg { color: black; }
+    .copy-btn.copied { background: rgba(68,255,136,0.15); border-color: rgba(68,255,136,0.3); }
+    .copy-btn svg { width: 13px; height: 13px; color: var(--text2); transition: color 0.15s; }
+
+    .detail-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-family: 'Space Mono', monospace;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .stat-sub {
+      font-size: 10px;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    /* Visits list */
+    .detail-visits-label {
+      padding: 14px 20px 8px;
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-family: 'Space Mono', monospace;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .visits-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 10px;
+    }
+
+    .visits-list::-webkit-scrollbar { width: 3px; }
+    .visits-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+    .visit-item {
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-bottom: 3px;
+      border: 1px solid transparent;
+    }
+
+    .visit-item:hover { background: var(--surface2); border-color: var(--border); }
+    .visit-item.active { background: var(--surface3); border-color: var(--border2); }
+
+    .visit-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .visit-ip {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .visit-time {
+      font-size: 10px;
+      color: var(--text3);
+      font-family: 'Space Mono', monospace;
+    }
+
+    .visit-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .visit-tag {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 99px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-family: 'Space Mono', monospace;
+    }
+
+    .no-visits {
+      padding: 32px 20px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 12px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ─── Visit Detail Modal ─── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      width: 520px;
+      max-width: 95vw;
+      max-height: 85vh;
+      background: #111;
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+      transform: scale(0.94) translateY(10px);
+      transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .modal-overlay.open .modal { transform: scale(1) translateY(0); }
+
+    .modal-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-title-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(68,255,136,0.6);
+    }
+
+    .modal-close {
+      width: 28px;
+      height: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .modal-close:hover { background: var(--surface3); }
+    .modal-close svg { width: 12px; height: 12px; }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    .modal-body::-webkit-scrollbar { width: 3px; }
+    .modal-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+    .info-section {
+      margin-bottom: 20px;
+    }
+
+    .info-section-title {
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-family: 'Space Mono', monospace;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .info-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .info-row.full { grid-column: 1/-1; }
+
+    .info-key {
+      font-size: 10px;
+      color: var(--text3);
+      font-family: 'Space Mono', monospace;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .info-val {
+      font-size: 12px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .info-val.highlight { color: var(--green); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: rgba(30,30,30,0.95);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-family: 'Space Mono', monospace;
+      backdrop-filter: blur(20px);
+      z-index: 9999;
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      pointer-events: none;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Disclaimer banner */
+    .disclaimer {
+      margin: 0 28px 20px;
+      padding: 12px 16px;
+      background: rgba(255,200,50,0.04);
+      border: 1px solid rgba(255,200,50,0.12);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      color: rgba(255,200,50,0.5);
+      font-family: 'Space Mono', monospace;
+      line-height: 1.5;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .link-item { animation: fadeIn 0.2s ease; }
+    .visit-item { animation: fadeIn 0.15s ease; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─── Sidebar ─── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 20 20" fill="none" stroke="black" stroke-width="2">
+            <circle cx="10" cy="10" r="8"/>
+            <path d="M2 10h16M10 2a12 12 0 0 1 0 16M10 2a12 12 0 0 0 0 16"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-name">PhishLens</div>
+          <div class="logo-sub">URL Tracker</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section-label">Fake Links</div>
+
+    <div class="links-list" id="linksList">
+      <!-- populated by JS -->
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="btn-generate" onclick="generateLink()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M10 4v12M4 10h12"/>
+        </svg>
+        Generate Fake URL
+      </button>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─── -->
+  <main class="main">
+    <div class="main-header">
+      <div class="main-title">
+        <span id="mainTitleText">Select a link to inspect</span>
+      </div>
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        LIVE
+      </div>
+    </div>
+
+    <div class="main-content" id="mainContent">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101"/>
+            <path d="m10.172 13.828 a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.102 1.101"/>
+          </svg>
+        </div>
+        <div class="empty-title">No link selected</div>
+        <div class="empty-sub">Generate a fake URL and click it in the sidebar to view details</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ─── Detail Panel ─── -->
+  <aside class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <div class="detail-close" onclick="closeDetail()">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M1 1l10 10M11 1L1 11"/>
+        </svg>
+      </div>
+      <div class="detail-link-label">Fake URL</div>
+      <div class="detail-link-url">
+        <span id="detailUrl"></span>
+        <div class="copy-btn" id="copyBtn" onclick="copyUrl()">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="8" y="8" width="10" height="10" rx="2"/>
+            <path d="M4 12H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Visits</div>
+        <div class="stat-value" id="statVisits">0</div>
+        <div class="stat-sub">unique clicks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Created</div>
+        <div class="stat-value" style="font-size:13px;margin-top:4px" id="statCreated">—</div>
+        <div class="stat-sub" id="statCreatedSub"></div>
+      </div>
+    </div>
+
+    <div class="detail-visits-label">Visitors</div>
+
+    <div class="visits-list" id="visitsList">
+      <div class="no-visits">No visitors yet.<br>Share the URL to track.</div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ─── Visit Modal ─── -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <div class="modal-title-dot"></div>
+        Visitor Info
+      </div>
+      <div class="modal-close" onclick="closeModal()">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M1 1l10 10M11 1L1 11"/>
+        </svg>
+      </div>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let links = {};
+  let selectedLinkId = null;
+  let pollInterval = null;
+
+  // ─── Utils ───
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function timeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
+  }
+
+  function formatTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('uk-UA', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }
+
+  function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('uk-UA', { day:'2-digit', month:'short' });
+  }
+
+  // ─── Generate ───
+  async function generateLink() {
+    try {
+      const r = await fetch('/api/links', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await r.json();
+      if (data.success) {
+        links[data.link.id] = data.link;
+        renderSidebar();
+        selectLink(data.link.id);
+        showToast('✓ Fake URL generated');
+      }
+    } catch(e) {
+      showToast('Error generating link');
+    }
+  }
+
+  // ─── Render sidebar ───
+  function renderSidebar() {
+    const list = document.getElementById('linksList');
+    const sorted = Object.values(links).sort((a,b) => new Date(b.created) - new Date(a.created));
+
+    if (!sorted.length) {
+      list.innerHTML = `<div style="padding:20px 12px;text-align:center;color:var(--text3);font-size:11px;font-family:'Space Mono',monospace;">No links yet.<br>Generate one below.</div>`;
+      return;
+    }
+
+    list.innerHTML = sorted.map(link => `
+      <div class="link-item ${link.clicks?.length ? 'has-visits' : ''} ${selectedLinkId === link.id ? 'active' : ''}"
+           onclick="selectLink('${link.id}')">
+        <div class="link-item-dot"></div>
+        <div class="link-item-info">
+          <div class="link-item-id">${link.id}</div>
+          <div class="link-item-meta">${timeAgo(link.created)}</div>
+        </div>
+        <div class="link-item-badge">${link.clicks?.length || 0}</div>
+      </div>
+    `).join('');
+  }
+
+  // ─── Select link ───
+  async function selectLink(id) {
+    selectedLinkId = id;
+    renderSidebar();
+
+    // Fetch fresh data
+    const r = await fetch(`/api/links/${id}`);
+    const link = await r.json();
+    links[id] = link;
+
+    // Open detail panel
+    document.getElementById('detailPanel').classList.add('open');
+    document.getElementById('detailUrl').textContent = link.url;
+
+    const d = new Date(link.created);
+    document.getElementById('statVisits').textContent = link.clicks?.length || 0;
+    document.getElementById('statCreated').textContent = formatTime(link.created);
+    document.getElementById('statCreatedSub').textContent = formatDate(link.created);
+
+    renderVisits(link.clicks || []);
+
+    // Poll for new visitors
+    clearInterval(pollInterval);
+    pollInterval = setInterval(() => pollLink(id), 3000);
+  }
+
+  async function pollLink(id) {
+    if (!id) return;
+    try {
+      const r = await fetch(`/api/links/${id}`);
+      const link = await r.json();
+      const prev = links[id]?.clicks?.length || 0;
+      links[id] = link;
+
+      if (link.clicks.length > prev) {
+        showToast(`🎯 New visitor on ${id}!`);
+        document.getElementById('statVisits').textContent = link.clicks.length;
+        renderVisits(link.clicks);
+        renderSidebar();
+      }
+    } catch(e) {}
+  }
+
+  function renderVisits(clicks) {
+    const list = document.getElementById('visitsList');
+    if (!clicks.length) {
+      list.innerHTML = `<div class="no-visits">No visitors yet.<br>Share the URL to track.</div>`;
+      return;
+    }
+    list.innerHTML = [...clicks].reverse().map((c, i) => `
+      <div class="visit-item" onclick="showVisit('${selectedLinkId}', '${c.id}')">
+        <div class="visit-top">
+          <span class="visit-ip">${c.ip}</span>
+          <span class="visit-time">${formatTime(c.timestamp)}</span>
+        </div>
+        <div class="visit-meta">
+          <span class="visit-tag">${c.browser}</span>
+          <span class="visit-tag">${c.os}</span>
+          <span class="visit-tag">${c.device}</span>
+          ${c.country && c.country !== 'Unknown' ? `<span class="visit-tag">${c.country}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function closeDetail() {
+    document.getElementById('detailPanel').classList.remove('open');
+    selectedLinkId = null;
+    clearInterval(pollInterval);
+    renderSidebar();
+  }
+
+  // ─── Copy URL ───
+  async function copyUrl() {
+    const url = document.getElementById('detailUrl').textContent;
+    await navigator.clipboard.writeText(url);
+    const btn = document.getElementById('copyBtn');
+    btn.classList.add('copied');
+    showToast('✓ URL copied to clipboard');
+    setTimeout(() => btn.classList.remove('copied'), 2000);
+  }
+
+  // ─── Visit Modal ───
+  function showVisit(linkId, clickId) {
+    const link = links[linkId];
+    if (!link) return;
+    const click = link.clicks.find(c => c.id === clickId);
+    if (!click) return;
+
+    const body = document.getElementById('modalBody');
+
+    const row = (key, val, highlight=false) =>
+      `<div class="info-row"><div class="info-key">${key}</div><div class="info-val ${highlight?'highlight':''}">${val || '—'}</div></div>`;
+
+    const fullRow = (key, val) =>
+      `<div class="info-row full"><div class="info-key">${key}</div><div class="info-val">${val || '—'}</div></div>`;
+
+    body.innerHTML = `
+      <div class="info-section">
+        <div class="info-section-title">Network</div>
+        <div class="info-grid">
+          ${row('IP Address', click.ip, true)}
+          ${row('Country', click.country)}
+          ${row('Timezone', click.timezone)}
+          ${row('Language', click.languages || click.language)}
+          ${row('Connection', click.connectionType)}
+          ${row('Referrer', click.referer)}
+        </div>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Device & Browser</div>
+        <div class="info-grid">
+          ${row('Browser', click.browser)}
+          ${row('OS', click.os)}
+          ${row('Device', click.device)}
+          ${row('Platform', click.platform)}
+          ${row('Screen', click.screen)}
+          ${row('Pixel Ratio', click.pixelRatio)}
+          ${row('Color Depth', click.colorDepth ? click.colorDepth + ' bit' : null)}
+          ${row('Touch Points', click.touchPoints)}
+        </div>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Hardware</div>
+        <div class="info-grid">
+          ${row('CPU Cores', click.cores)}
+          ${row('RAM (GB)', click.memory)}
+          ${row('Cookies', click.cookiesEnabled ? 'Enabled' : 'Disabled')}
+          ${row('Do Not Track', click.doNotTrack || 'Not set')}
+        </div>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section-title">Timestamp</div>
+        <div class="info-grid">
+          ${fullRow('Visited At', new Date(click.timestamp).toLocaleString('uk-UA'))}
+          ${fullRow('User Agent', click.userAgent)}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById('modalOverlay')) {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+  });
+
+  // ─── Init ───
+  async function init() {
+    try {
+      const r = await fetch('/api/links');
+      const data = await r.json();
+      data.forEach(l => links[l.id] = l);
+      renderSidebar();
+    } catch(e) {}
+  }
+
+  init();
+</script>
+
+</body>
+</html>
